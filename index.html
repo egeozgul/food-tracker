@@ -25,6 +25,7 @@
     --protein-soft:#E7EFE9;
     --energy:#C77D2E;
     --energy-soft:#FBEDDE;
+    --whoop:#1AC9C9;
     --card:#FFFFFF;
     --danger:#B3453A;
   }
@@ -56,10 +57,13 @@
   }
   .account-status{color:var(--ink-soft);}
   .account-status b{color:var(--ink);}
-  .signout-btn{
+  .account-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .pill-btn{
     background:transparent; border:1px solid var(--hair); border-radius:6px;
     padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; color:var(--ink);
+    font-family:inherit;
   }
+  .pill-btn.whoop-connected{background:var(--whoop); color:#fff; border-color:var(--whoop);}
 
   .auth-card{
     max-width:380px; margin:40px auto; background:var(--card); border:1px solid var(--hair);
@@ -79,12 +83,17 @@
     background:none; color:var(--ink-soft); text-decoration:underline; font-weight:400;
     padding:4px; font-size:12px;
   }
-  .auth-error{color:var(--danger); font-size:12px; margin:0 0 10px; min-height:14px;}
+  .auth-error{font-size:12px; margin:0 0 10px; min-height:14px; color:var(--danger);}
   .setup-banner{
     background:var(--energy-soft); border:1px solid var(--energy); border-radius:8px;
     padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
   }
   .setup-banner code{background:#fff; padding:1px 5px; border-radius:4px; font-size:12px;}
+  .toast{
+    background:var(--protein-soft); border:1px solid var(--protein); color:var(--ink);
+    border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:18px;
+  }
+  .toast.error{background:#FBEAE8; border-color:var(--danger);}
 
   .datebar{
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
@@ -125,7 +134,6 @@
     padding:10px; font-weight:700; font-size:14px; cursor:pointer; letter-spacing:.02em;
   }
   .add-btn:hover{background:#000;}
-  .add-btn:disabled{opacity:.5; cursor:default;}
 
   .items{list-style:none; margin:16px 0 0; padding:0;}
   .items li{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--hair); font-size:14px;}
@@ -144,6 +152,7 @@
   .nf-sub{font-weight:400; font-size:13px; color:var(--ink-soft); margin-left:4px;}
   .nf-value{font-size:16px; font-weight:800;}
   .nf-value.over{color:var(--danger);}
+  .nf-value.muted{color:var(--ink-soft); font-weight:600; font-size:14px;}
   .nf-bar-wrap{height:6px; background:var(--hair); border-radius:3px; margin:4px 0 10px; overflow:hidden;}
   .nf-bar{height:100%; border-radius:3px;}
   .nf-bar.energy{background:var(--energy);}
@@ -158,22 +167,20 @@
   }
 
   .chart-card{margin-top:24px;}
-  .chart-controls{display:flex; gap:8px; margin-bottom:14px;}
+  .chart-controls{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
   .range-btn{border:1px solid var(--hair); background:var(--paper); color:var(--ink-soft); border-radius:20px; padding:6px 14px; font-size:12px; font-weight:700; cursor:pointer;}
   .range-btn.active{background:var(--ink); color:#fff; border-color:var(--ink);}
   canvas{max-height:280px;}
 
   .backup-row{display:flex; gap:10px; margin-top:26px; flex-wrap:wrap; align-items:center;}
-  .backup-row button, .backup-row label{
+  .backup-row button{
     border:1px solid var(--hair); background:var(--card); color:var(--ink);
     border-radius:6px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer;
   }
-  .backup-row input[type=file]{display:none;}
   .storage-note{color:var(--ink-soft); font-size:12px; margin-top:8px;}
   .sync-dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--protein); margin-right:6px;}
   .hidden{display:none !important;}
 
-  /* ---- View tabs ---- */
   .view-tabs{display:flex; gap:6px; margin-bottom:22px;}
   .tab-btn{
     background:transparent; border:1px solid var(--hair); color:var(--ink-soft);
@@ -182,10 +189,7 @@
   }
   .tab-btn.active{background:var(--ink); color:#fff; border-color:var(--ink);}
 
-  /* ---- Trends page ---- */
-  .trend-day-nav{
-    display:flex; align-items:center; gap:10px; margin-bottom:16px;
-  }
+  .trend-day-nav{display:flex; align-items:center; gap:10px; margin-bottom:16px;}
   .trend-day-nav button{
     background:var(--ink); color:#fff; border:none; border-radius:3px;
     width:28px;height:28px; font-size:15px; cursor:pointer;
@@ -210,9 +214,10 @@
 
   <div id="setup-banner" class="setup-banner hidden">
     <b>Firebase isn't configured yet.</b> Open this file, find the <code>firebaseConfig</code> object near the top of the script,
-    and paste in your own project's config values from the Firebase console (Project settings → General → Your apps).
-    Until then the app runs in preview mode and won't save anything.
+    and paste in your own project's config values from the Firebase console.
   </div>
+
+  <div id="whoop-toast" class="hidden"></div>
 
   <!-- AUTH SCREEN -->
   <div id="auth-screen" class="auth-card hidden">
@@ -223,6 +228,7 @@
     <input type="password" id="auth-password" placeholder="Password (6+ characters)" autocomplete="current-password">
     <button id="auth-submit">Log in</button>
     <button class="link-btn" id="auth-toggle">Don't have an account? Sign up</button>
+    <button class="link-btn" id="auth-forgot">Forgot / change password?</button>
   </div>
 
   <!-- APP -->
@@ -230,7 +236,10 @@
 
     <div class="account-bar">
       <div class="account-status"><span class="sync-dot"></span>Signed in as <b id="account-email">—</b> · synced across devices</div>
-      <button class="signout-btn" id="signout-btn">Sign out</button>
+      <div class="account-actions">
+        <button class="pill-btn" id="whoop-btn">Connect Whoop</button>
+        <button class="pill-btn" id="signout-btn">Sign out</button>
+      </div>
     </div>
 
     <div class="view-tabs">
@@ -279,6 +288,16 @@
             <span class="nf-value" id="nf-prot">0</span>
           </div>
           <div class="nf-bar-wrap"><div class="nf-bar protein" id="nf-prot-bar" style="width:0%"></div></div>
+
+          <div class="nf-row">
+            <span class="nf-label">Burned <span class="nf-sub">Whoop</span></span>
+            <span class="nf-value muted" id="nf-burned">—</span>
+          </div>
+          <div class="nf-row thick">
+            <span class="nf-label">Net Calories</span>
+            <span class="nf-value" id="nf-net">—</span>
+          </div>
+
           <div class="nf-foot" id="nf-remaining">Set your goals below to see progress.</div>
         </div>
         <div class="goal-edit">
@@ -329,17 +348,16 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
   import {
     getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-    onAuthStateChanged, signOut
+    onAuthStateChanged, signOut, sendPasswordResetEmail
   } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc,
     onSnapshot, query, orderBy
   } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+  import {
+    getFunctions, httpsCallable
+  } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js";
 
-  // ============================================================
-  // PASTE YOUR OWN FIREBASE CONFIG HERE
-  // (Firebase console → Project settings → General → Your apps → Web app)
-  // ============================================================
   const firebaseConfig = {
     apiKey: "AIzaSyCkDbgOiFXeW_bGMnkvu69-4b0F9iHQGMg",
     authDomain: "food-log-5f090.firebaseapp.com",
@@ -350,18 +368,27 @@
     measurementId: "G-R6FLH55R3P"
   };
 
+  // ============================================================
+  // WHOOP OAUTH CONFIG — fill in your Client ID from the Whoop
+  // Developer Dashboard. The client SECRET never goes here —
+  // it lives only in the Cloud Function.
+  // ============================================================
+  const WHOOP_CLIENT_ID = "0efbccaf-e26b-48e8-8ade-92efb09de960";
+  const WHOOP_REDIRECT_URI = "https://us-central1-food-log-5f090.cloudfunctions.net/whoopCallback";
+  const WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth";
+  const WHOOP_SCOPES = "offline read:cycles";
+
   const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
   const $ = id => document.getElementById(id);
 
-  if (!isConfigured) {
-    $('setup-banner').classList.remove('hidden');
-  }
+  if (!isConfigured) $('setup-banner').classList.remove('hidden');
 
-  let app, auth, db, currentUser = null;
+  let app, auth, db, functionsInstance, currentUser = null;
   if (isConfigured) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+    functionsInstance = getFunctions(app);
   }
 
   // ---------------- Auth UI ----------------
@@ -388,6 +415,21 @@
         await createUserWithEmailAndPassword(auth, email, password);
       }
     }catch(err){
+      $('auth-error').textContent = friendlyAuthError(err.code);
+    }
+  });
+
+  $('auth-forgot')?.addEventListener('click', async ()=>{
+    const email = $('auth-email').value.trim();
+    $('auth-error').style.color = 'var(--danger)';
+    $('auth-error').textContent = '';
+    if(!email){ $('auth-error').textContent = 'Type your email above first, then tap this link.'; return; }
+    try{
+      await sendPasswordResetEmail(auth, email);
+      $('auth-error').style.color = 'var(--protein)';
+      $('auth-error').textContent = 'Reset link sent — check your email.';
+    }catch(err){
+      $('auth-error').style.color = 'var(--danger)';
       $('auth-error').textContent = friendlyAuthError(err.code);
     }
   });
@@ -425,6 +467,7 @@
         $('app-screen').classList.remove('hidden');
         $('account-email').textContent = user.email;
         initAppData(user.uid);
+        checkWhoopStatus(user.uid);
       } else {
         $('auth-screen').classList.remove('hidden');
         $('app-screen').classList.add('hidden');
@@ -432,11 +475,104 @@
     });
   }
 
+  // ---------------- Whoop connect/disconnect ----------------
+  let whoopConnected = false;
+
+  async function checkWhoopStatus(uid){
+    try{
+      const snap = await getDoc(doc(db,'users',uid,'settings','whoop'));
+      whoopConnected = snap.exists() && snap.data().connected === true;
+    }catch(e){
+      whoopConnected = false;
+    }
+    updateWhoopButton();
+  }
+
+  function updateWhoopButton(){
+    const btn = $('whoop-btn');
+    if(whoopConnected){
+      btn.textContent = 'Whoop Connected';
+      btn.classList.add('whoop-connected');
+    } else {
+      btn.textContent = 'Connect Whoop';
+      btn.classList.remove('whoop-connected');
+    }
+  }
+
+  $('whoop-btn')?.addEventListener('click', async ()=>{
+    if(!currentUser) return;
+    if(whoopConnected){
+      if(!confirm('Disconnect Whoop? You can reconnect anytime.')) return;
+      try{
+        const disconnectFn = httpsCallable(functionsInstance, 'whoopDisconnect');
+        await disconnectFn();
+        await setDoc(doc(db,'users',currentUser.uid,'settings','whoop'), { connected:false });
+        whoopConnected = false;
+        updateWhoopButton();
+      }catch(err){
+        alert('Could not disconnect: ' + err.message);
+      }
+      return;
+    }
+    const state = `${currentUser.uid}.${Math.random().toString(36).slice(2)}`;
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: WHOOP_CLIENT_ID,
+      redirect_uri: WHOOP_REDIRECT_URI,
+      scope: WHOOP_SCOPES,
+      state
+    });
+    window.location.href = `${WHOOP_AUTH_URL}?${params.toString()}`;
+  });
+
+  function showToast(message, isError){
+    const el = $('whoop-toast');
+    el.textContent = message;
+    el.className = 'toast' + (isError ? ' error' : '');
+    el.classList.remove('hidden');
+    setTimeout(()=> el.classList.add('hidden'), 6000);
+  }
+
+  (function handleWhoopRedirectParam(){
+    const params = new URLSearchParams(window.location.search);
+    const whoopParam = params.get('whoop');
+    if(whoopParam){
+      if(whoopParam === 'connected'){
+        showToast('Whoop connected successfully.', false);
+        whoopConnected = true;
+        onAuthStateChanged(auth, async user=>{
+          if(user){
+            await setDoc(doc(db,'users',user.uid,'settings','whoop'), { connected:true });
+            updateWhoopButton();
+          }
+        });
+      } else if(whoopParam === 'error'){
+        showToast('Connecting Whoop failed. Please try again.', true);
+      }
+      params.delete('whoop');
+      const newUrl = window.location.pathname + (params.toString() ? '?'+params.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+  })();
+
+  async function fetchWhoopCalories(dateStr){
+    if(!whoopConnected) return null;
+    try{
+      const fn = httpsCallable(functionsInstance, 'getWhoopCalories');
+      const res = await fn({ date: dateStr });
+      return res.data.kcal;
+    }catch(err){
+      console.warn('Whoop fetch failed:', err.message);
+      return null;
+    }
+  }
+
   // ---------------- App data (Firestore) ----------------
   let entries = [];
   let goals = { cal: 2000, prot: 150 };
   let currentDate = new Date();
   let unsubEntries = null;
+  let burnedCache = {};
 
   function fmtDate(d){
     const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
@@ -546,7 +682,7 @@
 
   function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
-  function renderTotals(){
+  async function renderTotals(){
     const dateStr = fmtDate(currentDate);
     const dayEntries = entriesForDate(dateStr);
     const totalCal = dayEntries.reduce((s,e)=>s+e.cal,0);
@@ -572,6 +708,22 @@
     } else {
       $('nf-remaining').textContent = 'Set your goals below to see progress.';
     }
+
+    if(whoopConnected){
+      $('nf-burned').textContent = '…';
+      let burned = burnedCache[dateStr];
+      if(burned === undefined){
+        burned = await fetchWhoopCalories(dateStr);
+        burnedCache[dateStr] = burned;
+      }
+      if(fmtDate(currentDate) === dateStr){
+        $('nf-burned').textContent = burned!=null ? Math.round(burned) : 'no data';
+        $('nf-net').textContent = burned!=null ? Math.round(totalCal - burned) : '—';
+      }
+    } else {
+      $('nf-burned').textContent = '—';
+      $('nf-net').textContent = '—';
+    }
   }
 
   let currentRange = '30d';
@@ -586,12 +738,8 @@
     });
   });
 
-  $('trend-prev-day').addEventListener('click', ()=>{
-    trendDayDate.setDate(trendDayDate.getDate()-1); renderChart();
-  });
-  $('trend-next-day').addEventListener('click', ()=>{
-    trendDayDate.setDate(trendDayDate.getDate()+1); renderChart();
-  });
+  $('trend-prev-day').addEventListener('click', ()=>{ trendDayDate.setDate(trendDayDate.getDate()-1); renderChart(); });
+  $('trend-next-day').addEventListener('click', ()=>{ trendDayDate.setDate(trendDayDate.getDate()+1); renderChart(); });
 
   const RANGE_CONFIG = {
     '1d':  { kind:'day' },
