@@ -1,908 +1,168 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Daily Log — Food Tracker</title>
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
+const admin = require("firebase-admin");
 
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#1A1A1A">
-<link rel="icon" href="/icon-192.png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Food Tracker">
+admin.initializeApp();
+const db = admin.firestore();
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<style>
-  :root{
-    --paper:#FAFAF7;
-    --ink:#1A1A1A;
-    --ink-soft:#5C5C58;
-    --rule:#1A1A1A;
-    --hair:#DDDAD1;
-    --protein:#3D6B4A;
-    --protein-soft:#E7EFE9;
-    --energy:#C77D2E;
-    --energy-soft:#FBEDDE;
-    --whoop:#1AC9C9;
-    --card:#FFFFFF;
-    --danger:#B3453A;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    background:var(--paper);
-    color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-    line-height:1.4;
-  }
-  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 80px;}
+const WHOOP_CLIENT_ID = defineSecret("WHOOP_CLIENT_ID");
+const WHOOP_CLIENT_SECRET = defineSecret("WHOOP_CLIENT_SECRET");
 
-  .eyebrow{
-    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--ink-soft); font-weight:700; margin:0 0 4px;
-  }
-  h1{
-    font-family:"Helvetica Neue Condensed","Arial Narrow",Helvetica,Arial,sans-serif;
-    font-weight:800; font-size:44px; letter-spacing:-0.01em; margin:0 0 2px;
-  }
-  .sub{color:var(--ink-soft); font-size:14px; margin:0 0 18px;}
+const TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
+const CYCLE_URL = "https://api.prod.whoop.com/developer/v2/cycle";
 
-  /* ---- Auth / account bar ---- */
-  .account-bar{
-    border-top:3px solid var(--rule); border-bottom:1px solid var(--rule);
-    padding:12px 0; margin-bottom:24px; display:flex; align-items:center;
-    justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:13px;
-  }
-  .account-status{color:var(--ink-soft);}
-  .account-status b{color:var(--ink);}
-  .account-actions{display:flex; gap:8px; flex-wrap:wrap;}
-  .pill-btn{
-    background:transparent; border:1px solid var(--hair); border-radius:6px;
-    padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; color:var(--ink);
-    font-family:inherit;
-  }
-  .pill-btn.whoop-connected{background:var(--whoop); color:#fff; border-color:var(--whoop);}
+// ==================================================================
+// IMPORTANT: after your first deploy, confirm this matches the real
+// URL Firebase gives you for whoopCallback, and register that SAME
+// URL as the Redirect URI in the Whoop Developer Dashboard.
+// ==================================================================
+const PROJECT_ID = "food-log-5f090";
+const REDIRECT_URI = `https://us-central1-${PROJECT_ID}.cloudfunctions.net/whoopCallback`;
+const APP_URL = "https://tracker.egeozgul.com";
 
-  .auth-card{
-    max-width:380px; margin:40px auto; background:var(--card); border:1px solid var(--hair);
-    border-radius:10px; padding:26px;
-  }
-  .auth-card h2{margin:0 0 4px; font-size:18px;}
-  .auth-card p{color:var(--ink-soft); font-size:13px; margin:0 0 18px;}
-  .auth-card input{
-    width:100%; font-family:inherit; font-size:14px; padding:10px; margin-bottom:10px;
-    border:1px solid var(--hair); border-radius:6px; background:var(--paper); color:var(--ink);
-  }
-  .auth-card button{
-    width:100%; background:var(--ink); color:#fff; border:none; border-radius:6px;
-    padding:11px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:8px;
-  }
-  .auth-card .link-btn{
-    background:none; color:var(--ink-soft); text-decoration:underline; font-weight:400;
-    padding:4px; font-size:12px;
-  }
-  .auth-error{font-size:12px; margin:0 0 10px; min-height:14px; color:var(--danger);}
-  .setup-banner{
-    background:var(--energy-soft); border:1px solid var(--energy); border-radius:8px;
-    padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
-  }
-  .setup-banner code{background:#fff; padding:1px 5px; border-radius:4px; font-size:12px;}
-  .toast{
-    background:var(--protein-soft); border:1px solid var(--protein); color:var(--ink);
-    border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:18px;
-  }
-  .toast.error{background:#FBEAE8; border-color:var(--danger);}
+// ---- Step 2 of the flow: Whoop redirects here with a one-time code ----
+exports.whoopCallback = onRequest(
+  { secrets: [WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET], maxInstances: 5 },
+  async (req, res) => {
+    const { code, state, error } = req.query;
 
-  .datebar{
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    border-top:3px solid var(--rule); border-bottom:1px solid var(--rule);
-    padding:10px 0; margin-bottom:24px;
-  }
-  .datebar button{
-    background:var(--ink); color:#fff; border:none; border-radius:3px;
-    width:30px;height:30px; font-size:16px; cursor:pointer;
-  }
-  .datebar button:hover{background:#000;}
-  .datebar input[type=date]{
-    font-size:15px; font-weight:700; border:none; background:transparent; color:var(--ink);
-    font-family:inherit; cursor:pointer;
-  }
-  .today-btn{
-    background:transparent !important; color:var(--ink) !important; border:1px solid var(--hair) !important;
-    width:auto !important; padding:0 12px; font-size:12px !important; font-weight:700; text-transform:uppercase;
-    letter-spacing:.05em;
-  }
+    if (error) {
+      return res.redirect(`${APP_URL}/?whoop=error`);
+    }
 
-  .grid{display:grid; grid-template-columns: 1.15fr 0.85fr; gap:26px;}
-  @media (max-width:760px){ .grid{grid-template-columns:1fr;} }
+    const uid = String(state || "").split(".")[0];
+    if (!code || !uid) {
+      return res.status(400).send("Missing authorization code or state.");
+    }
 
-  .card{background:var(--card); border:1px solid var(--hair); border-radius:10px; padding:20px;}
-  .card h2{font-size:13px; text-transform:uppercase; letter-spacing:.08em; margin:0 0 14px; color:var(--ink-soft); font-weight:800;}
+    try {
+      const tokenRes = await fetch(TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: String(code),
+          redirect_uri: REDIRECT_URI,
+          client_id: WHOOP_CLIENT_ID.value(),
+          client_secret: WHOOP_CLIENT_SECRET.value(),
+        }),
+      });
+      const tokenData = await tokenRes.json();
 
-  .form-row{display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;}
-  .form-row input{
-    font-family:inherit; font-size:14px; padding:9px 10px;
-    border:1px solid var(--hair); border-radius:6px; background:var(--paper); color:var(--ink);
-  }
-  .form-row input:focus{outline:2px solid var(--protein); outline-offset:1px;}
-  #food-name{flex:1 1 100%;}
-  #cal-input,#prot-input{flex:1; min-width:90px;}
-  .add-btn{
-    flex:1 1 100%; background:var(--ink); color:#fff; border:none; border-radius:6px;
-    padding:10px; font-weight:700; font-size:14px; cursor:pointer; letter-spacing:.02em;
-  }
-  .add-btn:hover{background:#000;}
-
-  .items{list-style:none; margin:16px 0 0; padding:0;}
-  .items li{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--hair); font-size:14px;}
-  .items li:last-child{border-bottom:none;}
-  .item-name{font-weight:600;}
-  .item-macro{color:var(--ink-soft); font-size:13px;}
-  .del-btn{background:none; border:none; color:var(--danger); cursor:pointer; font-size:13px; font-weight:700; padding:2px 6px;}
-  .empty-note{color:var(--ink-soft); font-size:13px; padding:14px 0; text-align:center;}
-
-  .nf{border:3px solid var(--rule); border-radius:2px; padding:14px 16px 16px; font-family:"Helvetica Neue Condensed","Arial Narrow",Helvetica,Arial,sans-serif;}
-  .nf-title{font-size:26px; font-weight:800; letter-spacing:-0.01em; border-bottom:9px solid var(--rule); padding-bottom:5px; margin-bottom:6px;}
-  .nf-serving{display:flex; justify-content:space-between; font-size:13px; font-weight:600; border-bottom:5px solid var(--rule); padding-bottom:6px; margin-bottom:6px;}
-  .nf-row{display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--rule); padding:6px 0;}
-  .nf-row.thick{border-bottom-width:5px;}
-  .nf-label{font-weight:700; font-size:15px;}
-  .nf-sub{font-weight:400; font-size:13px; color:var(--ink-soft); margin-left:4px;}
-  .nf-value{font-size:16px; font-weight:800;}
-  .nf-value.over{color:var(--danger);}
-  .nf-value.muted{color:var(--ink-soft); font-weight:600; font-size:14px;}
-  .nf-bar-wrap{height:6px; background:var(--hair); border-radius:3px; margin:4px 0 10px; overflow:hidden;}
-  .nf-bar{height:100%; border-radius:3px;}
-  .nf-bar.energy{background:var(--energy);}
-  .nf-bar.protein{background:var(--protein);}
-  .nf-foot{font-size:11px; color:var(--ink-soft); margin-top:8px; line-height:1.35;}
-
-  .goal-edit{display:flex; gap:8px; margin-top:14px;}
-  .goal-edit label{font-size:12px; color:var(--ink-soft); flex:1;}
-  .goal-edit input{
-    width:100%; margin-top:3px; font-family:inherit; font-size:13px; padding:7px 8px;
-    border:1px solid var(--hair); border-radius:6px; background:var(--paper); color:var(--ink);
-  }
-
-  .chart-card{margin-top:24px;}
-  .chart-controls{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
-  .range-btn{border:1px solid var(--hair); background:var(--paper); color:var(--ink-soft); border-radius:20px; padding:6px 14px; font-size:12px; font-weight:700; cursor:pointer;}
-  .range-btn.active{background:var(--ink); color:#fff; border-color:var(--ink);}
-  canvas{max-height:280px;}
-
-  .backup-row{display:flex; gap:10px; margin-top:26px; flex-wrap:wrap; align-items:center;}
-  .backup-row button{
-    border:1px solid var(--hair); background:var(--card); color:var(--ink);
-    border-radius:6px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer;
-  }
-  .storage-note{color:var(--ink-soft); font-size:12px; margin-top:8px;}
-  .sync-dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--protein); margin-right:6px;}
-  .hidden{display:none !important;}
-
-  .view-tabs{display:flex; gap:6px; margin-bottom:22px;}
-  .tab-btn{
-    background:transparent; border:1px solid var(--hair); color:var(--ink-soft);
-    border-radius:20px; padding:8px 18px; font-size:13px; font-weight:700; cursor:pointer;
-    font-family:inherit;
-  }
-  .tab-btn.active{background:var(--ink); color:#fff; border-color:var(--ink);}
-
-  .trend-day-nav{display:flex; align-items:center; gap:10px; margin-bottom:16px;}
-  .trend-day-nav button{
-    background:var(--ink); color:#fff; border:none; border-radius:3px;
-    width:28px;height:28px; font-size:15px; cursor:pointer;
-  }
-  .trend-day-nav span{font-size:14px; font-weight:700;}
-  .stat-row{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px;}
-  @media (max-width:640px){ .stat-row{grid-template-columns:1fr;} }
-  .stat-box{border:1px solid var(--hair); border-radius:8px; padding:14px 16px;}
-  .stat-box .stat-label{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:700; margin-bottom:4px;}
-  .stat-box .stat-value{font-size:22px; font-weight:800; font-family:"Helvetica Neue Condensed","Arial Narrow",Helvetica,Arial,sans-serif;}
-  .stat-box .stat-value.energy{color:var(--energy);}
-  .stat-box .stat-value.protein{color:var(--protein);}
-  .empty-chart-note{color:var(--ink-soft); font-size:13px; text-align:center; padding:40px 0;}
-</style>
-</head>
-<body>
-<div class="wrap">
-
-  <p class="eyebrow">Daily Log</p>
-  <h1>Food Tracker</h1>
-  <p class="sub">Track what you eat, watch protein &amp; calories add up, see the trend — synced across your devices.</p>
-
-  <div id="setup-banner" class="setup-banner hidden">
-    <b>Firebase isn't configured yet.</b> Open this file, find the <code>firebaseConfig</code> object near the top of the script,
-    and paste in your own project's config values from the Firebase console.
-  </div>
-
-  <div id="whoop-toast" class="hidden"></div>
-
-  <!-- AUTH SCREEN -->
-  <div id="auth-screen" class="auth-card hidden">
-    <h2 id="auth-title">Log in</h2>
-    <p id="auth-sub">Use the same email &amp; password on every device to sync your log.</p>
-    <p class="auth-error" id="auth-error"></p>
-    <input type="email" id="auth-email" placeholder="Email" autocomplete="email">
-    <input type="password" id="auth-password" placeholder="Password (6+ characters)" autocomplete="current-password">
-    <button id="auth-submit">Log in</button>
-    <button class="link-btn" id="auth-toggle">Don't have an account? Sign up</button>
-    <button class="link-btn" id="auth-forgot">Forgot / change password?</button>
-  </div>
-
-  <!-- APP -->
-  <div id="app-screen" class="hidden">
-
-    <div class="account-bar">
-      <div class="account-status"><span class="sync-dot"></span>Signed in as <b id="account-email">—</b> · synced across devices</div>
-      <div class="account-actions">
-        <button class="pill-btn" id="whoop-btn">Connect Whoop</button>
-        <button class="pill-btn" id="signout-btn">Sign out</button>
-      </div>
-    </div>
-
-    <div class="view-tabs">
-      <button class="tab-btn active" data-tab="log">Daily Log</button>
-      <button class="tab-btn" data-tab="trends">Trends</button>
-    </div>
-
-    <!-- ===== LOG VIEW ===== -->
-    <div id="view-log">
-
-    <div class="datebar">
-      <button id="prev-day" aria-label="Previous day">‹</button>
-      <input type="date" id="date-picker">
-      <button id="next-day" aria-label="Next day">›</button>
-      <button class="today-btn" id="today-btn">Today</button>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h2>Add a food</h2>
-        <div class="form-row">
-          <input type="text" id="food-name" placeholder="Food item, e.g. Grilled chicken breast">
-        </div>
-        <div class="form-row">
-          <input type="number" id="cal-input" placeholder="Calories" min="0">
-          <input type="number" id="prot-input" placeholder="Protein (g)" min="0">
-        </div>
-        <div class="form-row">
-          <button class="add-btn" id="add-btn">Add to log</button>
-        </div>
-        <ul class="items" id="items-list"></ul>
-      </div>
-
-      <div class="card">
-        <h2>Today's Totals</h2>
-        <div class="nf">
-          <div class="nf-title">Nutrition Facts</div>
-          <div class="nf-serving"><span id="nf-date-label">—</span><span id="nf-count">0 items</span></div>
-          <div class="nf-row thick">
-            <span class="nf-label">Calories</span>
-            <span class="nf-value" id="nf-cal">0</span>
-          </div>
-          <div class="nf-bar-wrap"><div class="nf-bar energy" id="nf-cal-bar" style="width:0%"></div></div>
-          <div class="nf-row">
-            <span><span class="nf-label">Protein</span><span class="nf-sub">g</span></span>
-            <span class="nf-value" id="nf-prot">0</span>
-          </div>
-          <div class="nf-bar-wrap"><div class="nf-bar protein" id="nf-prot-bar" style="width:0%"></div></div>
-
-          <div class="nf-row">
-            <span class="nf-label">Burned <span class="nf-sub">Whoop</span></span>
-            <span class="nf-value muted" id="nf-burned">—</span>
-          </div>
-          <div class="nf-row thick">
-            <span class="nf-label">Net Calories</span>
-            <span class="nf-value" id="nf-net">—</span>
-          </div>
-
-          <div class="nf-foot" id="nf-remaining">Set your goals below to see progress.</div>
-        </div>
-        <div class="goal-edit">
-          <label>Calorie goal<input type="number" id="goal-cal" min="0"></label>
-          <label>Protein goal (g)<input type="number" id="goal-prot" min="0"></label>
-        </div>
-      </div>
-    </div>
-
-    <div class="backup-row">
-      <button id="export-btn">Download backup (.json)</button>
-    </div>
-    <p class="storage-note">Your entries are stored in the cloud (Firebase) and sync automatically to any device you log into with this account.</p>
-    </div>
-
-    <!-- ===== TRENDS VIEW ===== -->
-    <div id="view-trends" class="hidden">
-      <div class="card chart-card">
-        <h2>Protein &amp; Calorie Trend</h2>
-        <div class="chart-controls">
-          <button class="range-btn" data-range="1d">1 Day</button>
-          <button class="range-btn" data-range="7d">1 Week</button>
-          <button class="range-btn active" data-range="30d">1 Month</button>
-          <button class="range-btn" data-range="6m">6 Months</button>
-          <button class="range-btn" data-range="1y">1 Year</button>
-          <button class="range-btn" data-range="5y">5 Years</button>
-        </div>
-
-        <div id="trend-day-nav" class="trend-day-nav hidden">
-          <button id="trend-prev-day" aria-label="Previous day">‹</button>
-          <span id="trend-day-label">—</span>
-          <button id="trend-next-day" aria-label="Next day">›</button>
-        </div>
-
-        <div class="stat-row" id="trend-stats"></div>
-
-        <div id="trend-chart-wrap">
-          <canvas id="trend-chart" height="90"></canvas>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-  import {
-    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-    onAuthStateChanged, signOut, sendPasswordResetEmail
-  } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-  import {
-    getFirestore, collection, addDoc, deleteDoc, doc, setDoc, getDoc,
-    onSnapshot, query, orderBy
-  } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
-  import {
-    getFunctions, httpsCallable
-  } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCkDbgOiFXeW_bGMnkvu69-4b0F9iHQGMg",
-    authDomain: "food-log-5f090.firebaseapp.com",
-    projectId: "food-log-5f090",
-    storageBucket: "food-log-5f090.firebasestorage.app",
-    messagingSenderId: "428052262505",
-    appId: "1:428052262505:web:3d6fc9c5ef23e1d387bcf8",
-    measurementId: "G-R6FLH55R3P"
-  };
-
-  // ============================================================
-  // WHOOP OAUTH CONFIG — fill in your Client ID from the Whoop
-  // Developer Dashboard. The client SECRET never goes here —
-  // it lives only in the Cloud Function.
-  // ============================================================
-  const WHOOP_CLIENT_ID = "0efbccaf-e26b-48e8-8ade-92efb09de960";
-  const WHOOP_REDIRECT_URI = "https://us-central1-food-log-5f090.cloudfunctions.net/whoopCallback";
-  const WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth";
-  const WHOOP_SCOPES = "offline read:cycles";
-
-  const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
-  const $ = id => document.getElementById(id);
-
-  if (!isConfigured) $('setup-banner').classList.remove('hidden');
-
-  let app, auth, db, functionsInstance, currentUser = null;
-  if (isConfigured) {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    functionsInstance = getFunctions(app);
-  }
-
-  // ---------------- Auth UI ----------------
-  let authMode = 'login';
-  $('auth-toggle')?.addEventListener('click', ()=>{
-    authMode = authMode === 'login' ? 'signup' : 'login';
-    $('auth-title').textContent = authMode === 'login' ? 'Log in' : 'Create account';
-    $('auth-submit').textContent = authMode === 'login' ? 'Log in' : 'Sign up';
-    $('auth-toggle').textContent = authMode === 'login'
-      ? "Don't have an account? Sign up"
-      : "Already have an account? Log in";
-    $('auth-error').textContent = '';
-  });
-
-  $('auth-submit')?.addEventListener('click', async ()=>{
-    const email = $('auth-email').value.trim();
-    const password = $('auth-password').value;
-    $('auth-error').textContent = '';
-    if(!email || !password){ $('auth-error').textContent = 'Enter an email and password.'; return; }
-    try{
-      if(authMode === 'login'){
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+      if (!tokenRes.ok) {
+        console.error("Whoop token exchange failed:", tokenData);
+        return res.redirect(`${APP_URL}/?whoop=error`);
       }
-    }catch(err){
-      $('auth-error').textContent = friendlyAuthError(err.code);
-    }
-  });
 
-  $('auth-forgot')?.addEventListener('click', async ()=>{
-    const email = $('auth-email').value.trim();
-    $('auth-error').style.color = 'var(--danger)';
-    $('auth-error').textContent = '';
-    if(!email){ $('auth-error').textContent = 'Type your email above first, then tap this link.'; return; }
-    try{
-      await sendPasswordResetEmail(auth, email);
-      $('auth-error').style.color = 'var(--protein)';
-      $('auth-error').textContent = 'Reset link sent — check your email.';
-    }catch(err){
-      $('auth-error').style.color = 'var(--danger)';
-      $('auth-error').textContent = friendlyAuthError(err.code);
-    }
-  });
+      await db.collection("whoopTokens").doc(uid).set({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_at: Date.now() + tokenData.expires_in * 1000,
+      });
 
-  function friendlyAuthError(code){
-    const map = {
-      'auth/invalid-email':'That email address looks invalid.',
-      'auth/user-not-found':'No account with that email. Try signing up.',
-      'auth/wrong-password':'Wrong password.',
-      'auth/invalid-credential':'Email or password is incorrect.',
-      'auth/email-already-in-use':'That email already has an account. Try logging in.',
-      'auth/weak-password':'Password should be at least 6 characters.'
+      return res.redirect(`${APP_URL}/?whoop=connected`);
+    } catch (err) {
+      console.error(err);
+      return res.redirect(`${APP_URL}/?whoop=error`);
+    }
+  }
+);
+
+// ---- Helper: get a valid access token, refreshing if needed ----
+async function getValidAccessToken(uid) {
+  const docRef = db.collection("whoopTokens").doc(uid);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new HttpsError("failed-precondition", "Whoop is not connected for this account.");
+  }
+  let data = snap.data();
+
+  if (Date.now() > data.expires_at - 60000) {
+    const tokenRes = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: data.refresh_token,
+        client_id: WHOOP_CLIENT_ID.value(),
+        client_secret: WHOOP_CLIENT_SECRET.value(),
+        scope: "offline",
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) {
+      console.error("Whoop token refresh failed:", tokenData);
+      throw new HttpsError("internal", "Could not refresh Whoop access token.");
+    }
+    data = {
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || data.refresh_token,
+      expires_at: Date.now() + tokenData.expires_in * 1000,
     };
-    return map[code] || 'Something went wrong. Try again.';
+    await docRef.set(data);
   }
+  return data.access_token;
+}
 
-  $('signout-btn')?.addEventListener('click', ()=> signOut(auth));
+// ---- Helper: convert a Whoop record's start time to its local calendar date (YYYY-MM-DD) ----
+function localDateFromRecord(record) {
+  const start = new Date(record.start);
+  const offsetStr = record.timezone_offset || "+00:00";
+  const sign = offsetStr[0] === "-" ? -1 : 1;
+  const [oh, om] = offsetStr.slice(1).split(":").map(Number);
+  const offsetMinutes = sign * (oh * 60 + (om || 0));
+  const localMs = start.getTime() + offsetMinutes * 60000;
+  const local = new Date(localMs);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(local.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-  document.querySelectorAll('.tab-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.dataset.tab;
-      $('view-log').classList.toggle('hidden', tab!=='log');
-      $('view-trends').classList.toggle('hidden', tab!=='trends');
-      if(tab==='trends') renderChart();
-    });
-  });
+// ---- Called from the app: get calories burned for one date (YYYY-MM-DD) ----
+exports.getWhoopCalories = onCall(
+  { secrets: [WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET], maxInstances: 5 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+    const dateStr = request.data && request.data.date;
+    if (!dateStr) throw new HttpsError("invalid-argument", "A date is required.");
 
-  if (isConfigured) {
-    onAuthStateChanged(auth, user=>{
-      currentUser = user;
-      if(user){
-        $('auth-screen').classList.add('hidden');
-        $('app-screen').classList.remove('hidden');
-        $('account-email').textContent = user.email;
-        initAppData(user.uid);
-        checkWhoopStatus(user.uid);
-      } else {
-        $('auth-screen').classList.remove('hidden');
-        $('app-screen').classList.add('hidden');
-      }
-    });
-  }
+    const accessToken = await getValidAccessToken(request.auth.uid);
 
-  // ---------------- Whoop connect/disconnect ----------------
-  let whoopConnected = false;
+    // Widen the window by a day on each side so we don't miss a cycle that
+    // starts late the night before (in UTC) but is still "today" locally.
+    const start = new Date(`${dateStr}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - 1);
+    const end = new Date(`${dateStr}T23:59:59.999Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
 
-  async function checkWhoopStatus(uid){
-    try{
-      const snap = await getDoc(doc(db,'users',uid,'settings','whoop'));
-      whoopConnected = snap.exists() && snap.data().connected === true;
-    }catch(e){
-      whoopConnected = false;
-    }
-    updateWhoopButton();
-  }
+    const url = `${CYCLE_URL}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}&limit=10`;
 
-  function updateWhoopButton(){
-    const btn = $('whoop-btn');
-    if(whoopConnected){
-      btn.textContent = 'Whoop Connected';
-      btn.classList.add('whoop-connected');
-    } else {
-      btn.textContent = 'Connect Whoop';
-      btn.classList.remove('whoop-connected');
-    }
-  }
-
-  $('whoop-btn')?.addEventListener('click', async ()=>{
-    if(!currentUser) return;
-    if(whoopConnected){
-      if(!confirm('Disconnect Whoop? You can reconnect anytime.')) return;
-      try{
-        const disconnectFn = httpsCallable(functionsInstance, 'whoopDisconnect');
-        await disconnectFn();
-        await setDoc(doc(db,'users',currentUser.uid,'settings','whoop'), { connected:false });
-        whoopConnected = false;
-        updateWhoopButton();
-      }catch(err){
-        alert('Could not disconnect: ' + err.message);
-      }
-      return;
-    }
-    const state = `${currentUser.uid}.${Math.random().toString(36).slice(2)}`;
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: WHOOP_CLIENT_ID,
-      redirect_uri: WHOOP_REDIRECT_URI,
-      scope: WHOOP_SCOPES,
-      state
-    });
-    window.location.href = `${WHOOP_AUTH_URL}?${params.toString()}`;
-  });
-
-  function showToast(message, isError){
-    const el = $('whoop-toast');
-    el.textContent = message;
-    el.className = 'toast' + (isError ? ' error' : '');
-    el.classList.remove('hidden');
-    setTimeout(()=> el.classList.add('hidden'), 6000);
-  }
-
-  (function handleWhoopRedirectParam(){
-    const params = new URLSearchParams(window.location.search);
-    const whoopParam = params.get('whoop');
-    if(whoopParam){
-      if(whoopParam === 'connected'){
-        showToast('Whoop connected successfully.', false);
-        whoopConnected = true;
-        onAuthStateChanged(auth, async user=>{
-          if(user){
-            await setDoc(doc(db,'users',user.uid,'settings','whoop'), { connected:true });
-            updateWhoopButton();
-          }
-        });
-      } else if(whoopParam === 'error'){
-        showToast('Connecting Whoop failed. Please try again.', true);
-      }
-      params.delete('whoop');
-      const newUrl = window.location.pathname + (params.toString() ? '?'+params.toString() : '');
-      window.history.replaceState({}, '', newUrl);
-    }
-  })();
-
-  async function fetchWhoopCalories(dateStr){
-    if(!whoopConnected) return null;
-    try{
-      const fn = httpsCallable(functionsInstance, 'getWhoopCalories');
-      const res = await fn({ date: dateStr });
-      return res.data.kcal;
-    }catch(err){
-      console.warn('Whoop fetch failed:', err.message);
-      return null;
-    }
-  }
-
-  // ---------------- App data (Firestore) ----------------
-  let entries = [];
-  let goals = { cal: 2000, prot: 150 };
-  let currentDate = new Date();
-  let unsubEntries = null;
-  let burnedCache = {};
-
-  function fmtDate(d){
-    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  }
-  function prettyDate(d){ return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}); }
-  function isToday(d){ return fmtDate(d)===fmtDate(new Date()); }
-
-  async function initAppData(uid){
-    const goalsRef = doc(db, 'users', uid, 'settings', 'goals');
-    const snap = await getDoc(goalsRef);
-    if(snap.exists()) goals = snap.data();
-    $('goal-cal').value = goals.cal || '';
-    $('goal-prot').value = goals.prot || '';
-
-    if(unsubEntries) unsubEntries();
-    const entriesQuery = query(collection(db,'users',uid,'entries'), orderBy('date'));
-    unsubEntries = onSnapshot(entriesQuery, snapshot=>{
-      entries = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
-      render();
-    });
-
-    setDate(new Date());
-  }
-
-  function setDate(d){
-    currentDate = d;
-    $('date-picker').value = fmtDate(d);
-    render();
-  }
-
-  $('date-picker').addEventListener('change', e=>{
-    const [y,m,day] = e.target.value.split('-').map(Number);
-    setDate(new Date(y, m-1, day));
-  });
-  $('prev-day').addEventListener('click', ()=>{ const d=new Date(currentDate); d.setDate(d.getDate()-1); setDate(d); });
-  $('next-day').addEventListener('click', ()=>{ const d=new Date(currentDate); d.setDate(d.getDate()+1); setDate(d); });
-  $('today-btn').addEventListener('click', ()=> setDate(new Date()));
-
-  $('add-btn').addEventListener('click', addEntry);
-  ['food-name','cal-input','prot-input'].forEach(id=>{
-    $(id).addEventListener('keydown', e=>{ if(e.key==='Enter') addEntry(); });
-  });
-
-  async function addEntry(){
-    if(!currentUser) return;
-    const name = $('food-name').value.trim();
-    const cal = parseFloat($('cal-input').value);
-    const prot = parseFloat($('prot-input').value);
-    if(!name){ $('food-name').focus(); return; }
-    await addDoc(collection(db,'users',currentUser.uid,'entries'), {
-      date: fmtDate(currentDate),
-      name,
-      cal: isNaN(cal)?0:cal,
-      prot: isNaN(prot)?0:prot,
-      createdAt: Date.now()
-    });
-    $('food-name').value=''; $('cal-input').value=''; $('prot-input').value='';
-    $('food-name').focus();
-  }
-
-  async function deleteEntry(id){
-    if(!currentUser) return;
-    await deleteDoc(doc(db,'users',currentUser.uid,'entries',id));
-  }
-
-  $('goal-cal').addEventListener('input', ()=> saveGoalsDebounced());
-  $('goal-prot').addEventListener('input', ()=> saveGoalsDebounced());
-  let goalTimer;
-  function saveGoalsDebounced(){
-    clearTimeout(goalTimer);
-    goalTimer = setTimeout(async ()=>{
-      goals.cal = parseFloat($('goal-cal').value)||0;
-      goals.prot = parseFloat($('goal-prot').value)||0;
-      if(currentUser){
-        await setDoc(doc(db,'users',currentUser.uid,'settings','goals'), goals);
-      }
-      renderTotals();
-    }, 400);
-  }
-
-  function entriesForDate(dateStr){ return entries.filter(e=>e.date===dateStr); }
-
-  function renderList(){
-    const dateStr = fmtDate(currentDate);
-    const dayEntries = entriesForDate(dateStr);
-    const list = $('items-list');
-    list.innerHTML='';
-    if(dayEntries.length===0){
-      list.innerHTML = '<li class="empty-note">No items logged for this day yet.</li>';
-      return;
-    }
-    dayEntries.forEach(e=>{
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <div>
-          <div class="item-name">${escapeHtml(e.name)}</div>
-          <div class="item-macro">${e.cal} kcal · ${e.prot} g protein</div>
-        </div>
-        <button class="del-btn" data-id="${e.id}">Remove</button>`;
-      list.appendChild(li);
-    });
-    list.querySelectorAll('.del-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=> deleteEntry(btn.dataset.id));
-    });
-  }
-
-  function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-
-  async function renderTotals(){
-    const dateStr = fmtDate(currentDate);
-    const dayEntries = entriesForDate(dateStr);
-    const totalCal = dayEntries.reduce((s,e)=>s+e.cal,0);
-    const totalProt = dayEntries.reduce((s,e)=>s+e.prot,0);
-
-    $('nf-date-label').textContent = prettyDate(currentDate) + (isToday(currentDate)?' (today)':'');
-    $('nf-count').textContent = dayEntries.length + (dayEntries.length===1?' item':' items');
-    $('nf-cal').textContent = Math.round(totalCal);
-    $('nf-prot').textContent = Math.round(totalProt);
-
-    const calPct = goals.cal>0 ? Math.min(100,(totalCal/goals.cal)*100) : 0;
-    const protPct = goals.prot>0 ? Math.min(100,(totalProt/goals.prot)*100) : 0;
-    $('nf-cal-bar').style.width = calPct+'%';
-    $('nf-prot-bar').style.width = protPct+'%';
-    $('nf-cal').classList.toggle('over', goals.cal>0 && totalCal>goals.cal);
-
-    if(goals.cal>0 || goals.prot>0){
-      const calLeft = goals.cal - totalCal;
-      const protLeft = goals.prot - totalProt;
-      $('nf-remaining').textContent =
-        `${calLeft>=0? Math.round(calLeft)+' kcal left' : Math.round(-calLeft)+' kcal over'} · ` +
-        `${protLeft>=0? Math.round(protLeft)+'g protein left' : Math.round(-protLeft)+'g protein over'}`;
-    } else {
-      $('nf-remaining').textContent = 'Set your goals below to see progress.';
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("Whoop cycle fetch failed:", data);
+      throw new HttpsError("internal", "Could not fetch data from Whoop.");
     }
 
-    if(whoopConnected){
-      $('nf-burned').textContent = '…';
-      let burned = burnedCache[dateStr];
-      if(burned === undefined){
-        burned = await fetchWhoopCalories(dateStr);
-        burnedCache[dateStr] = burned;
-      }
-      if(fmtDate(currentDate) === dateStr){
-        $('nf-burned').textContent = burned!=null ? Math.round(burned) : 'no data';
-        $('nf-net').textContent = burned!=null ? Math.round(totalCal - burned) : '—';
-      }
-    } else {
-      $('nf-burned').textContent = '—';
-      $('nf-net').textContent = '—';
+    const records = data.records || [];
+    // Only use the single cycle that actually started on the requested local date —
+    // summing every cycle that merely overlaps the day double-counts sleep-to-sleep cycles.
+    const match = records.find(
+      (r) => r.score_state === "SCORED" && localDateFromRecord(r) === dateStr
+    );
+
+    if (!match || !match.score || typeof match.score.kilojoule !== "number") {
+      return { kcal: null, cyclesFound: records.length };
     }
+
+    return { kcal: Math.round(match.score.kilojoule / 4.184), cyclesFound: records.length };
   }
+);
 
-  let currentRange = '30d';
-  let trendDayDate = new Date();
-
-  document.querySelectorAll('.range-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      currentRange = btn.dataset.range;
-      renderChart();
-    });
-  });
-
-  $('trend-prev-day').addEventListener('click', ()=>{ trendDayDate.setDate(trendDayDate.getDate()-1); renderChart(); });
-  $('trend-next-day').addEventListener('click', ()=>{ trendDayDate.setDate(trendDayDate.getDate()+1); renderChart(); });
-
-  const RANGE_CONFIG = {
-    '1d':  { kind:'day' },
-    '7d':  { days:7,    bucket:'day' },
-    '30d': { days:30,   bucket:'day' },
-    '6m':  { days:182,  bucket:'week' },
-    '1y':  { days:365,  bucket:'month' },
-    '5y':  { days:1825, bucket:'month' }
-  };
-
-  function getDateRangeArray(numDays){
-    const arr=[];
-    for(let i=numDays-1;i>=0;i--){ const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i); arr.push(d); }
-    return arr;
-  }
-  function bucketByDay(dates){ return dates.map(d=>[d]); }
-  function bucketByWeek(dates){
-    const buckets=[];
-    for(let i=0;i<dates.length;i+=7){ buckets.push(dates.slice(i,i+7)); }
-    return buckets;
-  }
-  function bucketByMonth(dates){
-    const map = new Map();
-    dates.forEach(d=>{
-      const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-      if(!map.has(key)) map.set(key, []);
-      map.get(key).push(d);
-    });
-    return Array.from(map.values());
-  }
-  function bucketLabel(bucket, kind){
-    const first = bucket[0];
-    if(kind==='day') return first.toLocaleDateString(undefined,{month:'short',day:'numeric'});
-    if(kind==='week') return first.toLocaleDateString(undefined,{month:'short',day:'numeric'});
-    return first.toLocaleDateString(undefined,{month:'short',year:'2-digit'});
-  }
-
-  function setStats(avgCal, avgProt, loggedDays, totalDays){
-    $('trend-stats').innerHTML = `
-      <div class="stat-box"><div class="stat-label">Avg Calories / Day</div><div class="stat-value energy">${Math.round(avgCal)}</div></div>
-      <div class="stat-box"><div class="stat-label">Avg Protein / Day</div><div class="stat-value protein">${Math.round(avgProt)} g</div></div>
-      <div class="stat-box"><div class="stat-label">Days Logged</div><div class="stat-value">${loggedDays} / ${totalDays}</div></div>
-    `;
-  }
-
-  let chart;
-  function renderChart(){
-    if(currentRange === '1d'){
-      renderDayChart();
-      return;
-    }
-    $('trend-day-nav').classList.add('hidden');
-    $('trend-chart-wrap').classList.remove('hidden');
-    $('trend-chart-wrap').innerHTML = '<canvas id="trend-chart" height="90"></canvas>';
-
-    const cfg = RANGE_CONFIG[currentRange];
-    const dates = getDateRangeArray(cfg.days);
-    let buckets;
-    if(cfg.bucket==='day') buckets = bucketByDay(dates);
-    else if(cfg.bucket==='week') buckets = bucketByWeek(dates);
-    else buckets = bucketByMonth(dates);
-
-    const labels = buckets.map(b => bucketLabel(b, cfg.bucket));
-    const calData = [], protData = [];
-    let totalCal=0, totalProt=0, loggedDays=0;
-
-    buckets.forEach(bucket=>{
-      let bCal=0, bProt=0;
-      bucket.forEach(d=>{
-        const dayEntries = entriesForDate(fmtDate(d));
-        if(dayEntries.length) loggedDays++;
-        bCal += dayEntries.reduce((s,e)=>s+e.cal,0);
-        bProt += dayEntries.reduce((s,e)=>s+e.prot,0);
-      });
-      calData.push(Math.round(bCal/bucket.length));
-      protData.push(Math.round(bProt/bucket.length));
-      totalCal += bCal; totalProt += bProt;
-    });
-
-    setStats(totalCal/dates.length, totalProt/dates.length, loggedDays, dates.length);
-
-    const ctx = document.getElementById('trend-chart').getContext('2d');
-    if(chart) chart.destroy();
-    chart = new Chart(ctx, {
-      data:{ labels, datasets:[
-        { type:'bar', label:'Calories (avg/day)', data:calData, backgroundColor:'#C77D2E', borderRadius:3, yAxisID:'y' },
-        { type:'line', label:'Protein g (avg/day)', data:protData, borderColor:'#3D6B4A', backgroundColor:'#3D6B4A', tension:.3, yAxisID:'y1', pointRadius:2 }
-      ]},
-      options:{
-        responsive:true,
-        interaction:{mode:'index', intersect:false},
-        plugins:{ legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}} },
-        scales:{
-          y:{ position:'left', beginAtZero:true, title:{display:true,text:'kcal',font:{size:11}}, grid:{color:'#EEEBE3'} },
-          y1:{ position:'right', beginAtZero:true, title:{display:true,text:'g protein',font:{size:11}}, grid:{drawOnChartArea:false} }
-        }
-      }
-    });
-  }
-
-  function renderDayChart(){
-    $('trend-day-nav').classList.remove('hidden');
-    const dateStr = fmtDate(trendDayDate);
-    $('trend-day-label').textContent = prettyDate(trendDayDate) + (isToday(trendDayDate)?' (today)':'');
-
-    const dayEntries = entriesForDate(dateStr).slice().sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
-    const totalCal = dayEntries.reduce((s,e)=>s+e.cal,0);
-    const totalProt = dayEntries.reduce((s,e)=>s+e.prot,0);
-    setStats(totalCal, totalProt, dayEntries.length?1:0, 1);
-
-    if(chart) chart.destroy();
-    const wrap = $('trend-chart-wrap');
-
-    if(dayEntries.length===0){
-      wrap.innerHTML = '<div class="empty-chart-note">No items logged this day yet — nothing to plot.</div>';
-      return;
-    }
-    wrap.innerHTML = '<canvas id="trend-chart" height="90"></canvas>';
-
-    let runCal=0, runProt=0;
-    const labels = dayEntries.map(e=>e.name);
-    const calData = dayEntries.map(e=>{ runCal+=e.cal; return runCal; });
-    const protData = dayEntries.map(e=>{ runProt+=e.prot; return runProt; });
-
-    const ctx = document.getElementById('trend-chart').getContext('2d');
-    chart = new Chart(ctx, {
-      data:{ labels, datasets:[
-        { type:'bar', label:'Cumulative calories', data:calData, backgroundColor:'#C77D2E', borderRadius:3, yAxisID:'y' },
-        { type:'line', label:'Cumulative protein (g)', data:protData, borderColor:'#3D6B4A', backgroundColor:'#3D6B4A', tension:.3, yAxisID:'y1', pointRadius:3 }
-      ]},
-      options:{
-        responsive:true,
-        interaction:{mode:'index', intersect:false},
-        plugins:{ legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}} },
-        scales:{
-          x:{ ticks:{ autoSkip:true, maxRotation:40, minRotation:0, font:{size:10} } },
-          y:{ position:'left', beginAtZero:true, title:{display:true,text:'kcal',font:{size:11}}, grid:{color:'#EEEBE3'} },
-          y1:{ position:'right', beginAtZero:true, title:{display:true,text:'g protein',font:{size:11}}, grid:{drawOnChartArea:false} }
-        }
-      }
-    });
-  }
-
-  $('export-btn').addEventListener('click', ()=>{
-    const payload = { entries, goals, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `food-log-backup-${fmtDate(new Date())}.json`; a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  function render(){ renderList(); renderTotals(); renderChart(); }
-</script>
-
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js').catch((err) => {
-        console.warn('Service worker registration failed:', err);
-      });
-    });
-  }
-</script>
-</body>
-</html>
+// ---- Called from the app: disconnect Whoop ----
+exports.whoopDisconnect = onCall({ maxInstances: 5 }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  await db.collection("whoopTokens").doc(request.auth.uid).delete();
+  return { ok: true };
+});
