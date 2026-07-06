@@ -143,21 +143,14 @@
   .del-btn{background:none; border:none; color:var(--danger); cursor:pointer; font-size:13px; font-weight:700; padding:2px 6px;}
   .empty-note{color:var(--ink-soft); font-size:13px; padding:14px 0; text-align:center;}
 
-  .nf{border:3px solid var(--rule); border-radius:2px; padding:14px 16px 16px; font-family:"Helvetica Neue Condensed","Arial Narrow",Helvetica,Arial,sans-serif;}
-  .nf-title{font-size:26px; font-weight:800; letter-spacing:-0.01em; border-bottom:9px solid var(--rule); padding-bottom:5px; margin-bottom:6px;}
-  .nf-serving{display:flex; justify-content:space-between; font-size:13px; font-weight:600; border-bottom:5px solid var(--rule); padding-bottom:6px; margin-bottom:6px;}
-  .nf-row{display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--rule); padding:6px 0;}
-  .nf-row.thick{border-bottom-width:5px;}
-  .nf-label{font-weight:700; font-size:15px;}
-  .nf-sub{font-weight:400; font-size:13px; color:var(--ink-soft); margin-left:4px;}
-  .nf-value{font-size:16px; font-weight:800;}
-  .nf-value.over{color:var(--danger);}
-  .nf-value.muted{color:var(--ink-soft); font-weight:600; font-size:14px;}
-  .nf-bar-wrap{height:6px; background:var(--hair); border-radius:3px; margin:4px 0 10px; overflow:hidden;}
-  .nf-bar{height:100%; border-radius:3px;}
-  .nf-bar.energy{background:var(--energy);}
-  .nf-bar.protein{background:var(--protein);}
-  .nf-foot{font-size:11px; color:var(--ink-soft); margin-top:8px; line-height:1.35;}
+  .totals-sub{color:var(--ink-soft); font-size:13px; font-weight:600; margin:-6px 0 14px;}
+  .totals-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px;}
+  @media (max-width:420px){ .totals-grid{grid-template-columns:1fr;} }
+  .stat-label-sub{font-weight:400; color:var(--ink-soft); font-size:11px; text-transform:none; letter-spacing:0;}
+  .stat-value .unit{font-size:13px; font-weight:600; margin-left:2px; color:var(--ink-soft);}
+  .stat-value.over{color:var(--danger) !important;}
+  .stat-value.muted{color:var(--ink-soft);}
+  .nf-foot{font-size:11px; color:var(--ink-soft); margin:10px 0 0; line-height:1.35;}
 
   .goal-edit{display:flex; gap:8px; margin-top:14px;}
   .goal-edit label{font-size:12px; color:var(--ink-soft); flex:1;}
@@ -202,6 +195,10 @@
   .stat-box .stat-value{font-size:22px; font-weight:800; font-family:"Helvetica Neue Condensed","Arial Narrow",Helvetica,Arial,sans-serif;}
   .stat-box .stat-value.energy{color:var(--energy);}
   .stat-box .stat-value.protein{color:var(--protein);}
+  .nf-bar-wrap{height:6px; background:var(--hair); border-radius:3px; margin:8px 0 0; overflow:hidden;}
+  .nf-bar{height:100%; border-radius:3px;}
+  .nf-bar.energy{background:var(--energy);}
+  .nf-bar.protein{background:var(--protein);}
   .empty-chart-note{color:var(--ink-soft); font-size:13px; text-align:center; padding:40px 0;}
 </style>
 </head>
@@ -275,31 +272,31 @@
 
       <div class="card">
         <h2>Today's Totals</h2>
-        <div class="nf">
-          <div class="nf-title">Nutrition Facts</div>
-          <div class="nf-serving"><span id="nf-date-label">—</span><span id="nf-count">0 items</span></div>
-          <div class="nf-row thick">
-            <span class="nf-label">Calories</span>
-            <span class="nf-value" id="nf-cal">0</span>
-          </div>
-          <div class="nf-bar-wrap"><div class="nf-bar energy" id="nf-cal-bar" style="width:0%"></div></div>
-          <div class="nf-row">
-            <span><span class="nf-label">Protein</span><span class="nf-sub">g</span></span>
-            <span class="nf-value" id="nf-prot">0</span>
-          </div>
-          <div class="nf-bar-wrap"><div class="nf-bar protein" id="nf-prot-bar" style="width:0%"></div></div>
+        <p class="totals-sub" id="nf-date-label">—</p>
 
-          <div class="nf-row">
-            <span class="nf-label">Burned <span class="nf-sub">Whoop</span></span>
-            <span class="nf-value muted" id="nf-burned">—</span>
+        <div class="totals-grid">
+          <div class="stat-box">
+            <div class="stat-label">Calories</div>
+            <div class="stat-value energy" id="nf-cal">0</div>
+            <div class="nf-bar-wrap"><div class="nf-bar energy" id="nf-cal-bar" style="width:0%"></div></div>
           </div>
-          <div class="nf-row thick">
-            <span class="nf-label">Net Calories</span>
-            <span class="nf-value" id="nf-net">—</span>
+          <div class="stat-box">
+            <div class="stat-label">Protein</div>
+            <div class="stat-value protein" id="nf-prot">0<span class="unit">g</span></div>
+            <div class="nf-bar-wrap"><div class="nf-bar protein" id="nf-prot-bar" style="width:0%"></div></div>
           </div>
-
-          <div class="nf-foot" id="nf-remaining">Set your goals below to see progress.</div>
+          <div class="stat-box">
+            <div class="stat-label">Burned <span class="stat-label-sub">Whoop</span></div>
+            <div class="stat-value muted" id="nf-burned">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Net Calories</div>
+            <div class="stat-value" id="nf-net">—</div>
+          </div>
         </div>
+
+        <p class="nf-foot" id="nf-remaining">Set your goals below to see progress.</p>
+
         <div class="goal-edit">
           <label>Calorie goal<input type="number" id="goal-cal" min="0"></label>
           <label>Protein goal (g)<input type="number" id="goal-prot" min="0"></label>
@@ -567,6 +564,27 @@
     }
   }
 
+  // Fetches burned-calorie data for every date in datesArr that isn't already
+  // cached, in a single request — used by the Trends chart so a 5-year view
+  // doesn't trigger thousands of individual calls.
+  async function ensureWhoopRangeCached(datesArr){
+    if(!whoopConnected) return;
+    const missing = datesArr.map(fmtDate).filter(ds => !(ds in burnedCache));
+    if(missing.length === 0) return;
+    missing.sort();
+    const startDate = missing[0];
+    const endDate = missing[missing.length-1];
+    try{
+      const fn = httpsCallable(functionsInstance, 'getWhoopCaloriesRange');
+      const res = await fn({ startDate, endDate });
+      const byDate = res.data.byDate || {};
+      missing.forEach(ds=>{ burnedCache[ds] = (ds in byDate) ? byDate[ds] : null; });
+    }catch(err){
+      console.warn('Whoop range fetch failed:', err.message);
+      missing.forEach(ds=>{ burnedCache[ds] = null; });
+    }
+  }
+
   // ---------------- App data (Firestore) ----------------
   let entries = [];
   let goals = { cal: 2000, prot: 150 };
@@ -688,8 +706,8 @@
     const totalCal = dayEntries.reduce((s,e)=>s+e.cal,0);
     const totalProt = dayEntries.reduce((s,e)=>s+e.prot,0);
 
-    $('nf-date-label').textContent = prettyDate(currentDate) + (isToday(currentDate)?' (today)':'');
-    $('nf-count').textContent = dayEntries.length + (dayEntries.length===1?' item':' items');
+    $('nf-date-label').textContent = prettyDate(currentDate) + (isToday(currentDate)?' (today)':'') +
+      ' · ' + dayEntries.length + (dayEntries.length===1?' item':' items');
     $('nf-cal').textContent = Math.round(totalCal);
     $('nf-prot').textContent = Math.round(totalProt);
 
@@ -779,8 +797,8 @@
 
   function setStats(avgCal, avgProt, loggedDays, totalDays){
     $('trend-stats').innerHTML = `
-      <div class="stat-box"><div class="stat-label">Avg Calories / Day</div><div class="stat-value energy">${Math.round(avgCal)}</div></div>
-      <div class="stat-box"><div class="stat-label">Avg Protein / Day</div><div class="stat-value protein">${Math.round(avgProt)} g</div></div>
+      <div class="stat-box"><div class="stat-label">Avg Calories / Logged Day</div><div class="stat-value energy">${Math.round(avgCal)}</div></div>
+      <div class="stat-box"><div class="stat-label">Avg Protein / Logged Day</div><div class="stat-value protein">${Math.round(avgProt)} g</div></div>
       <div class="stat-box"><div class="stat-label">Days Logged</div><div class="stat-value">${loggedDays} / ${totalDays}</div></div>
     `;
   }
@@ -807,26 +825,40 @@
     let totalCal=0, totalProt=0, loggedDays=0;
 
     buckets.forEach(bucket=>{
-      let bCal=0, bProt=0;
+      let bCal=0, bProt=0, bLoggedDays=0;
       bucket.forEach(d=>{
         const dayEntries = entriesForDate(fmtDate(d));
-        if(dayEntries.length) loggedDays++;
+        if(dayEntries.length){
+          loggedDays++;
+          bLoggedDays++;
+        }
         bCal += dayEntries.reduce((s,e)=>s+e.cal,0);
         bProt += dayEntries.reduce((s,e)=>s+e.prot,0);
       });
-      calData.push(Math.round(bCal/bucket.length));
-      protData.push(Math.round(bProt/bucket.length));
+      calData.push(bLoggedDays>0 ? Math.round(bCal/bLoggedDays) : null);
+      protData.push(bLoggedDays>0 ? Math.round(bProt/bLoggedDays) : null);
       totalCal += bCal; totalProt += bProt;
     });
 
-    setStats(totalCal/dates.length, totalProt/dates.length, loggedDays, dates.length);
+    setStats(loggedDays>0 ? totalCal/loggedDays : 0, loggedDays>0 ? totalProt/loggedDays : 0, loggedDays, dates.length);
+
+    // Trim leading buckets that have no data at all, so a 6mo/1yr/5yr view
+    // doesn't render as mostly blank space when you've only recently started logging.
+    let firstDataIdx = calData.findIndex((v, i) => v !== null || protData[i] !== null);
+    if(firstDataIdx === -1){
+      $('trend-chart-wrap').innerHTML = '<div class="empty-chart-note">No entries logged yet in this range — nothing to plot.</div>';
+      return;
+    }
+    const trimmedLabels = labels.slice(firstDataIdx);
+    const trimmedCal = calData.slice(firstDataIdx);
+    const trimmedProt = protData.slice(firstDataIdx);
 
     const ctx = document.getElementById('trend-chart').getContext('2d');
     if(chart) chart.destroy();
     chart = new Chart(ctx, {
-      data:{ labels, datasets:[
-        { type:'bar', label:'Calories (avg/day)', data:calData, backgroundColor:'#C77D2E', borderRadius:3, yAxisID:'y' },
-        { type:'line', label:'Protein g (avg/day)', data:protData, borderColor:'#3D6B4A', backgroundColor:'#3D6B4A', tension:.3, yAxisID:'y1', pointRadius:2 }
+      data:{ labels: trimmedLabels, datasets:[
+        { type:'bar', label:'Calories (avg/logged day)', data:trimmedCal, backgroundColor:'#C77D2E', borderRadius:3, yAxisID:'y' },
+        { type:'line', label:'Protein g (avg/logged day)', data:trimmedProt, borderColor:'#3D6B4A', backgroundColor:'#3D6B4A', tension:.3, yAxisID:'y1', pointRadius:2 }
       ]},
       options:{
         responsive:true,
