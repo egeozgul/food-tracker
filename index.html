@@ -89,7 +89,13 @@
     padding:11px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:6px;
   }
   .install-btn:hover{opacity:.92;}
-  .ios-note{color:var(--ink-soft); font-size:12px; margin:0 0 16px; line-height:1.4;}
+
+  .install-help{
+    max-width:380px; margin:0 auto 40px; text-align:center; padding:14px 18px;
+    border:1px solid var(--hair); border-radius:10px; background:var(--card);
+  }
+  .install-help-title{font-size:13px; font-weight:800; margin:0 0 4px;}
+  .install-help-text{font-size:13px; color:var(--ink-soft); margin:0; line-height:1.5;}
   .setup-banner{
     background:var(--energy-soft); border:1px solid var(--energy); border-radius:8px;
     padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
@@ -249,7 +255,6 @@
     <p id="auth-sub">Use the same email &amp; password on every device to sync your log.</p>
 
     <button class="install-btn hidden" id="install-btn">📲 Install App on This Device</button>
-    <p class="ios-note hidden" id="ios-install-note">On iPhone/iPad: tap the Share icon in Safari, then "Add to Home Screen."</p>
 
     <p class="auth-error" id="auth-error"></p>
     <input type="email" id="auth-email" placeholder="Email" autocomplete="email">
@@ -257,6 +262,11 @@
     <button id="auth-submit">Log in</button>
     <button class="link-btn" id="auth-toggle">Don't have an account? Sign up</button>
     <button class="link-btn" id="auth-forgot">Forgot / change password?</button>
+  </div>
+
+  <div id="install-help" class="install-help hidden">
+    <p class="install-help-title">📲 Add to Home Screen</p>
+    <p class="install-help-text" id="install-help-text">—</p>
   </div>
 
   <!-- APP -->
@@ -1090,15 +1100,49 @@
     installBtn.disabled = false;
   });
 
-  // ---- iOS fallback: Safari never fires beforeinstallprompt, show manual steps instead ----
-  function isIos(){
-    return /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-  }
-  function isStandalone(){
+  // ---- Auto-detected "Add to Home Screen" instructions ----
+  function isStandaloneMode(){
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
-  if (isIos() && !isStandalone()) {
-    document.getElementById('ios-install-note')?.classList.remove('hidden');
+
+  function getInstallInstructions(){
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    const isSamsung = /SamsungBrowser/.test(ua);
+    const isEdge = /Edg\//.test(ua);
+    const isFirefox = /Firefox/.test(ua);
+    const isChrome = /Chrome/.test(ua) && !isEdge && !isSamsung;
+    const isSafari = /Safari/.test(ua) && !isChrome && !isEdge && !isSamsung && !isFirefox;
+    const isDesktop = !isIOS && !isAndroid;
+
+    if (isIOS) {
+      return isSafari
+        ? 'Tap the Share icon, then "Add to Home Screen."'
+        : 'Open this page in Safari, then tap Share → "Add to Home Screen."';
+    }
+    if (isAndroid) {
+      if (isSamsung) return 'Tap ≡ menu → "Add page to" → "Home screen."';
+      if (isFirefox) return 'Tap ⋮ menu → "Install" (or "Add to Home screen").';
+      if (isEdge) return 'Tap ⋯ menu → "Add to phone" → "Home screen."';
+      return 'Tap ⋮ menu → "Add to Home screen."';
+    }
+    if (isDesktop) {
+      if (isEdge) return 'Click ⊕ in the address bar, or ⋯ menu → "Apps" → "Install this site as an app."';
+      if (isChrome) return 'Click the install icon (⊕) in the address bar, or ⋮ menu → "Install Food Tracker."';
+      if (isSafari) return 'In Safari\'s menu bar: File → "Add to Dock."';
+      if (isFirefox) return 'Firefox doesn\'t support app installs — try Chrome or Edge instead.';
+    }
+    return 'Use your browser\'s menu to add this page to your home screen.';
+  }
+
+  if (!isStandaloneMode()) {
+    const helpBox = document.getElementById('install-help');
+    const helpText = document.getElementById('install-help-text');
+    if (helpBox && helpText) {
+      helpText.textContent = getInstallInstructions();
+      helpBox.classList.remove('hidden');
+    }
   }
 </script>
 </body>
