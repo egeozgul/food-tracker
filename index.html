@@ -89,6 +89,15 @@
     padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
   }
   .setup-banner code{background:#fff; padding:1px 5px; border-radius:4px; font-size:12px;}
+  .install-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    background:var(--protein-soft); border:1px solid var(--protein); border-radius:8px;
+    padding:12px 16px; margin-bottom:18px; font-size:13px;
+  }
+  .install-bar button{
+    background:var(--protein); color:#fff; border:none; border-radius:6px;
+    padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap;
+  }
   .toast{
     background:var(--protein-soft); border:1px solid var(--protein); color:var(--ink);
     border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:18px;
@@ -127,7 +136,13 @@
     border:1px solid var(--hair); border-radius:6px; background:var(--paper); color:var(--ink);
   }
   .form-row input:focus{outline:2px solid var(--protein); outline-offset:1px;}
-  #food-name{flex:1 1 100%;}
+  #food-name{flex:1 1 auto; min-width:140px;}
+  .ai-btn{
+    flex:0 0 auto; background:var(--ink); color:#fff; border:none; border-radius:6px;
+    padding:0 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap;
+  }
+  .ai-btn:disabled{opacity:.6; cursor:default;}
+  .ai-note{color:var(--ink-soft); font-size:11px; margin:-4px 0 10px;}
   #cal-input,#prot-input{flex:1; min-width:90px;}
   .add-btn{
     flex:1 1 100%; background:var(--ink); color:#fff; border:none; border-radius:6px;
@@ -209,6 +224,11 @@
   <h1>Food Tracker</h1>
   <p class="sub">Track what you eat, watch protein &amp; calories add up, see the trend — synced across your devices.</p>
 
+  <div id="install-bar" class="install-bar hidden">
+    <span id="install-bar-text">Install this as an app on your phone for quick access.</span>
+    <button id="install-btn">Install App</button>
+  </div>
+
   <div id="setup-banner" class="setup-banner hidden">
     <b>Firebase isn't configured yet.</b> Open this file, find the <code>firebaseConfig</code> object near the top of the script,
     and paste in your own project's config values from the Firebase console.
@@ -234,6 +254,7 @@
     <div class="account-bar">
       <div class="account-status"><span class="sync-dot"></span>Signed in as <b id="account-email">—</b> · synced across devices</div>
       <div class="account-actions">
+        <button class="pill-btn" id="claude-key-btn">Set Claude API Key</button>
         <button class="pill-btn" id="whoop-btn">Connect Whoop</button>
         <button class="pill-btn" id="signout-btn">Sign out</button>
       </div>
@@ -259,7 +280,9 @@
         <h2>Add a food</h2>
         <div class="form-row">
           <input type="text" id="food-name" placeholder="Food item, e.g. Grilled chicken breast">
+          <button type="button" class="ai-btn hidden" id="estimate-btn">✨ Estimate</button>
         </div>
+        <p class="ai-note hidden" id="ai-note">Estimates come from Claude and may be approximate — check the numbers before saving.</p>
         <div class="form-row">
           <input type="number" id="cal-input" placeholder="Calories" min="0">
           <input type="number" id="prot-input" placeholder="Protein (g)" min="0">
@@ -474,6 +497,7 @@
 
   // ---------------- Whoop connect/disconnect ----------------
   let whoopConnected = false;
+  let claudeApiKey = null;
 
   async function checkWhoopStatus(uid){
     try{
@@ -520,6 +544,94 @@
       state
     });
     window.location.href = `${WHOOP_AUTH_URL}?${params.toString()}`;
+  });
+
+  // ---------------- Claude API key + AI estimate ----------------
+  function updateClaudeButton(){
+    const btn = $('claude-key-btn');
+    if(claudeApiKey){
+      btn.textContent = 'Claude AI: On';
+      btn.classList.add('whoop-connected');
+      $('estimate-btn').classList.remove('hidden');
+      $('ai-note').classList.remove('hidden');
+    } else {
+      btn.textContent = 'Set Claude API Key';
+      btn.classList.remove('whoop-connected');
+      $('estimate-btn').classList.add('hidden');
+      $('ai-note').classList.add('hidden');
+    }
+  }
+
+  $('claude-key-btn')?.addEventListener('click', async ()=>{
+    if(!currentUser) return;
+    if(claudeApiKey){
+      if(!confirm('Remove your saved Claude API key? AI estimates will turn off (you can still enter values manually).')) return;
+      claudeApiKey = null;
+      await setDoc(doc(db,'users',currentUser.uid,'settings','aiKey'), { key: '' });
+      updateClaudeButton();
+      return;
+    }
+    const key = prompt(
+      'Paste your Claude API key (from console.anthropic.com).\n\n' +
+      'It will be stored privately in your own account (only you can read it) and used directly from your browser to estimate calories/protein when you type a food name.'
+    );
+    if(!key || !key.trim()) return;
+    claudeApiKey = key.trim();
+    await setDoc(doc(db,'users',currentUser.uid,'settings','aiKey'), { key: claudeApiKey });
+    updateClaudeButton();
+  });
+
+  async function estimateWithClaude(foodName){
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 150,
+        messages: [{
+          role: 'user',
+          content: `Estimate the calories and protein (in grams) for a typical single serving of: "${foodName}". Respond with ONLY a JSON object like {"calories": 165, "protein": 31} and nothing else — no explanation, no markdown formatting.`
+        }]
+      })
+    });
+    if(!res.ok){
+      let msg = `Request failed (${res.status})`;
+      try{ const errBody = await res.json(); if(errBody?.error?.message) msg = errBody.error.message; }catch(e){}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    const text = (data.content||[]).map(b=>b.text||'').join('').trim();
+    const cleaned = text.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      calories: Math.round(Number(parsed.calories)),
+      protein: Math.round(Number(parsed.protein))
+    };
+  }
+
+  $('estimate-btn')?.addEventListener('click', async ()=>{
+    const name = $('food-name').value.trim();
+    if(!name){ $('food-name').focus(); return; }
+    if(!claudeApiKey) return;
+    const btn = $('estimate-btn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Estimating…';
+    try{
+      const result = await estimateWithClaude(name);
+      $('cal-input').value = result.calories;
+      $('prot-input').value = result.protein;
+    }catch(err){
+      alert('AI estimate failed: ' + err.message);
+    }finally{
+      btn.disabled = false;
+      btn.textContent = original;
+    }
   });
 
   function showToast(message, isError){
@@ -605,6 +717,12 @@
     if(snap.exists()) goals = snap.data();
     $('goal-cal').value = goals.cal || '';
     $('goal-prot').value = goals.prot || '';
+
+    try{
+      const aiSnap = await getDoc(doc(db,'users',uid,'settings','aiKey'));
+      claudeApiKey = (aiSnap.exists() && aiSnap.data().key) ? aiSnap.data().key : null;
+    }catch(e){ claudeApiKey = null; }
+    updateClaudeButton();
 
     if(unsubEntries) unsubEntries();
     const entriesQuery = query(collection(db,'users',uid,'entries'), orderBy('date'));
@@ -935,6 +1053,48 @@
       });
     });
   }
+
+  // ---- Install App button ----
+  (function(){
+    const bar = document.getElementById('install-bar');
+    const btn = document.getElementById('install-btn');
+    const text = document.getElementById('install-bar-text');
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+
+    if (isStandalone) return; // already installed, nothing to do
+
+    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+
+    if (isIOS) {
+      // iOS Safari has no programmatic install prompt — show instructions instead.
+      text.textContent = 'Install this app: tap the Share icon, then "Add to Home Screen."';
+      btn.classList.add('hidden');
+      bar.classList.remove('hidden');
+      return;
+    }
+
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      bar.classList.remove('hidden');
+    });
+
+    btn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      bar.classList.add('hidden');
+    });
+
+    window.addEventListener('appinstalled', () => {
+      bar.classList.add('hidden');
+      deferredPrompt = null;
+    });
+  })();
 </script>
 </body>
 </html>
