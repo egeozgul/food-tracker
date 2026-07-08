@@ -84,6 +84,12 @@
     padding:4px; font-size:12px;
   }
   .auth-error{font-size:12px; margin:0 0 10px; min-height:14px; color:var(--danger);}
+  .install-btn{
+    width:100%; background:var(--protein); color:#fff; border:none; border-radius:6px;
+    padding:11px; font-weight:700; font-size:14px; cursor:pointer; margin-bottom:6px;
+  }
+  .install-btn:hover{opacity:.92;}
+  .ios-note{color:var(--ink-soft); font-size:12px; margin:0 0 16px; line-height:1.4;}
   .setup-banner{
     background:var(--energy-soft); border:1px solid var(--energy); border-radius:8px;
     padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
@@ -241,6 +247,10 @@
   <div id="auth-screen" class="auth-card hidden">
     <h2 id="auth-title">Log in</h2>
     <p id="auth-sub">Use the same email &amp; password on every device to sync your log.</p>
+
+    <button class="install-btn hidden" id="install-btn">📲 Install App on This Device</button>
+    <p class="ios-note hidden" id="ios-install-note">On iPhone/iPad: tap the Share icon in Safari, then "Add to Home Screen."</p>
+
     <p class="auth-error" id="auth-error"></p>
     <input type="email" id="auth-email" placeholder="Email" autocomplete="email">
     <input type="password" id="auth-password" placeholder="Password (6+ characters)" autocomplete="current-password">
@@ -1055,47 +1065,41 @@
     });
   }
 
-  // ---- Install App button ----
-  (function(){
-    const bar = document.getElementById('install-bar');
-    const btn = document.getElementById('install-btn');
-    const text = document.getElementById('install-bar-text');
+  // ---- Install App button (Android/Chrome/Edge) ----
+  let deferredInstallPrompt = null;
+  const installBtn = document.getElementById('install-btn');
 
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-      || window.navigator.standalone === true;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installBtn) installBtn.classList.remove('hidden');
+  });
 
-    if (isStandalone) return; // already installed, nothing to do
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    if (installBtn) installBtn.classList.add('hidden');
+  });
 
-    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  installBtn?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    installBtn.disabled = true;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtn.classList.add('hidden');
+    installBtn.disabled = false;
+  });
 
-    if (isIOS) {
-      // iOS Safari has no programmatic install prompt — show instructions instead.
-      text.textContent = 'Install this app: tap the Share icon, then "Add to Home Screen."';
-      btn.classList.add('hidden');
-      bar.classList.remove('hidden');
-      return;
-    }
-
-    let deferredPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      bar.classList.remove('hidden');
-    });
-
-    btn.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      bar.classList.add('hidden');
-    });
-
-    window.addEventListener('appinstalled', () => {
-      bar.classList.add('hidden');
-      deferredPrompt = null;
-    });
-  })();
+  // ---- iOS fallback: Safari never fires beforeinstallprompt, show manual steps instead ----
+  function isIos(){
+    return /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+  }
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  if (isIos() && !isStandalone()) {
+    document.getElementById('ios-install-note')?.classList.remove('hidden');
+  }
 </script>
 </body>
 </html>
