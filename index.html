@@ -9,11 +9,11 @@
 <meta name="theme-color" content="#1A1A1A">
 <link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Food Tracker">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --paper:#FAFAF7;
@@ -49,7 +49,6 @@
   }
   .sub{color:var(--ink-soft); font-size:14px; margin:0 0 18px;}
 
-  /* ---- Auth / account bar ---- */
   .account-bar{
     border-top:3px solid var(--rule); border-bottom:1px solid var(--rule);
     padding:12px 0; margin-bottom:24px; display:flex; align-items:center;
@@ -101,15 +100,6 @@
     padding:14px 16px; font-size:13px; margin-bottom:22px; line-height:1.5;
   }
   .setup-banner code{background:#fff; padding:1px 5px; border-radius:4px; font-size:12px;}
-  .install-bar{
-    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
-    background:var(--protein-soft); border:1px solid var(--protein); border-radius:8px;
-    padding:12px 16px; margin-bottom:18px; font-size:13px;
-  }
-  .install-bar button{
-    background:var(--protein); color:#fff; border:none; border-radius:6px;
-    padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap;
-  }
   .toast{
     background:var(--protein-soft); border:1px solid var(--protein); color:var(--ink);
     border-radius:8px; padding:12px 16px; font-size:13px; margin-bottom:18px;
@@ -236,11 +226,6 @@
   <p class="eyebrow">Daily Log</p>
   <h1>Food Tracker</h1>
   <p class="sub">Track what you eat, watch protein &amp; calories add up, see the trend — synced across your devices.</p>
-
-  <div id="install-bar" class="install-bar hidden">
-    <span id="install-bar-text">Install this as an app on your phone for quick access.</span>
-    <button id="install-btn">Install App</button>
-  </div>
 
   <div id="setup-banner" class="setup-banner hidden">
     <b>Firebase isn't configured yet.</b> Open this file, find the <code>firebaseConfig</code> object near the top of the script,
@@ -551,6 +536,8 @@
         await setDoc(doc(db,'users',currentUser.uid,'settings','whoop'), { connected:false });
         whoopConnected = false;
         updateWhoopButton();
+        burnedCache = {};
+        renderTotals();
       }catch(err){
         alert('Could not disconnect: ' + err.message);
       }
@@ -690,31 +677,11 @@
     try{
       const fn = httpsCallable(functionsInstance, 'getWhoopCalories');
       const res = await fn({ date: dateStr });
+      console.log('Whoop result for', dateStr, res.data);
       return res.data.kcal;
     }catch(err){
-      console.warn('Whoop fetch failed:', err.message);
+      console.warn('Whoop fetch failed:', err.code, err.message);
       return null;
-    }
-  }
-
-  // Fetches burned-calorie data for every date in datesArr that isn't already
-  // cached, in a single request — used by the Trends chart so a 5-year view
-  // doesn't trigger thousands of individual calls.
-  async function ensureWhoopRangeCached(datesArr){
-    if(!whoopConnected) return;
-    const missing = datesArr.map(fmtDate).filter(ds => !(ds in burnedCache));
-    if(missing.length === 0) return;
-    missing.sort();
-    const startDate = missing[0];
-    const endDate = missing[missing.length-1];
-    try{
-      const fn = httpsCallable(functionsInstance, 'getWhoopCaloriesRange');
-      const res = await fn({ startDate, endDate });
-      const byDate = res.data.byDate || {};
-      missing.forEach(ds=>{ burnedCache[ds] = (ds in byDate) ? byDate[ds] : null; });
-    }catch(err){
-      console.warn('Whoop range fetch failed:', err.message);
-      missing.forEach(ds=>{ burnedCache[ds] = null; });
     }
   }
 
@@ -981,8 +948,6 @@
 
     setStats(loggedDays>0 ? totalCal/loggedDays : 0, loggedDays>0 ? totalProt/loggedDays : 0, loggedDays, dates.length);
 
-    // Trim leading buckets that have no data at all, so a 6mo/1yr/5yr view
-    // doesn't render as mostly blank space when you've only recently started logging.
     let firstDataIdx = calData.findIndex((v, i) => v !== null || protData[i] !== null);
     if(firstDataIdx === -1){
       $('trend-chart-wrap').innerHTML = '<div class="empty-chart-note">No entries logged yet in this range — nothing to plot.</div>';
@@ -1075,7 +1040,6 @@
     });
   }
 
-  // ---- Install App button (Android/Chrome/Edge) ----
   let deferredInstallPrompt = null;
   const installBtn = document.getElementById('install-btn');
 
@@ -1100,7 +1064,6 @@
     installBtn.disabled = false;
   });
 
-  // ---- Auto-detected "Add to Home Screen" instructions ----
   function isStandaloneMode(){
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
